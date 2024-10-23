@@ -1,11 +1,12 @@
 (require 'cl)
 (require 'cl-macs)
+(provide 'password-cache)
 
 (add-to-list 'auto-mode-alist '("\\.\\(docx?\\|DOCX?\\|pptx?\\|PPTX?\\|xlsx?\\|XLSX?\\)\\'" . zyt/doc-mode))
 (defvar doc2pdf-convert-process nil)
 (defvar doc2pdf-convert-in-process nil)
 (defvar doc2pdf-arguments '("/readonly" "/hidden"))
-
+(defvar-local doc-password nil)
 (defcustom msdoc-to-pdf-program
   (let ((executable (if (eq system-type 'windows-nt)
                         "OfficeToPDF.exe" "OfficeToPDF"))
@@ -90,6 +91,7 @@
 						  )
 						 )
 						)
+				  (setq doc-password password)
 				  (set-process-sentinel doc2pdf-convert-process #'process-handler)					  
 				  (message "文件转换中，请稍候...")
 				  )
@@ -101,6 +103,9 @@
 					)
 				(kill-buffer cur-buffer)
 				(message (format "转换结束:%s" output))
+				(when doc-password
+				  (password-cache-add (concat "/pdf-tools" pdf-file) doc-password)
+				  )
 				(find-file pdf-file)
 				;; (setf buffer-file-name (concat (file-name-directory doc-file)
 				;; (file-name-base doc-file)
@@ -127,6 +132,7 @@
 			   )
 			  )
 		(setq doc2pdf-convert-in-process t)
+		(setq doc-password nil)
 		(set-process-sentinel doc2pdf-convert-process #'process-handler)					  
 		(message "文件转换中，请稍候...")
 		(kill-buffer cur-buffer)
