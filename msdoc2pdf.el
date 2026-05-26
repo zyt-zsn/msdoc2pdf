@@ -1,15 +1,18 @@
 (require 'cl)
 (require 'cl-macs)
-(provide 'password-cache)
+(require 'password-cache)
 
 (add-to-list 'auto-mode-alist '("\\.\\(docx?\\|DOCX?\\|pptx?\\|PPTX?\\|xlsx?\\|XLSX?\\)\\'" . zyt/doc-mode))
 (defvar doc2pdf-convert-process nil)
 (defvar doc2pdf-convert-in-process nil)
 (defvar doc2pdf-arguments '("/readonly" "/hidden"))
+(if (eq system-type 'gnu/linux)
+	(setq doc2pdf-arguments '("--convert-to" "pdf"))
+	)
 (defvar-local doc-password nil)
 (defcustom msdoc-to-pdf-program
   (let ((executable (if (eq system-type 'windows-nt)
-                        "OfficeToPDF.exe" "OfficeToPDF"))
+                        "OfficeToPDF.exe" "libreoffice"))
         (default-directory
          (or (and load-file-name
                   (file-name-directory load-file-name))
@@ -45,12 +48,13 @@
 				   (pdf-file (concat (file-name-directory doc-file)
 									 (file-name-base doc-file)
 									 ".pdf"))
-				   (pdf-file (concat directory  (file-name-base doc-file) "_" (secure-hash 'md5 cur-buffer) ".pdf"))
+				   (pdf-file-with-uuid (concat directory  (file-name-base doc-file) "_" (secure-hash 'md5 cur-buffer) ".pdf"))
 				   )
-	  (if (file-exists-p pdf-file)
+	  (if (file-exists-p pdf-file-with-uuid)
 		  (progn
-			(kill-buffer cur-buffer)
-			(find-file pdf-file)
+			;; (kill-buffer pdf-file-with-uuid)
+			(kill-buffer)
+			(find-file pdf-file-with-uuid)
 			;; (setf buffer-file-name (concat (file-name-directory doc-file)
 			;; (file-name-base doc-file)
 			;; ".pdf"))
@@ -62,15 +66,16 @@
 						  (append
 						   doc2pdf-arguments
 						   (list doc-file)
-						   (list pdf-file)
+						   (and (eq system-type 'windows-nt) (list pdf-file))
 						   )
 						  " "
 						  )))
+		(declare-function process-handler "msdoc2pdf")
 		(defun process-handler(process output)
 		  (setq doc2pdf-convert-in-process nil)
 		  (let ((exit-code (process-exit-status doc2pdf-convert-process)))
 			(if (member exit-code '(1 5))
-				(when-let ((password
+				(when-let* ((password
 							(read-from-minibuffer
 							 (or (and (= 5 exit-code) "请输入文件密码: ")
 								 "密码错误，请重新输入:")
@@ -87,7 +92,7 @@
 						  (list "/password" password)
 						  (list "/pdf_user_pass" password)
 						  (list doc-file)
-						  (list pdf-file)
+						  (and (eq system-type 'windows-nt) (list pdf-file))
 						  )
 						 )
 						)
@@ -106,7 +111,8 @@
 				(when doc-password
 				  (password-cache-add (concat "/pdf-tools" pdf-file) doc-password)
 				  )
-				(find-file pdf-file)
+				(rename-file pdf-file pdf-file-with-uuid)
+				(find-file pdf-file-with-uuid)
 				;; (setf buffer-file-name (concat (file-name-directory doc-file)
 				;; (file-name-base doc-file)
 				;; ".pdf"))
@@ -118,6 +124,7 @@
 				)
 			  )
 			))
+		(setq doc2pdf-convert-in-process t)
 		(setq doc2pdf-convert-process
 			  (apply
 			   #'start-process
@@ -127,16 +134,19 @@
 			   (append
 				doc2pdf-arguments
 				(list doc-file)
-				(list pdf-file)
+				(and (eq system-type 'windows-nt) (list pdf-file))
 				)
 			   )
 			  )
-		(setq doc2pdf-convert-in-process t)
 		(setq doc-password nil)
 		(set-process-sentinel doc2pdf-convert-process #'process-handler)					  
 		(message "文件转换中，请稍候...")
 		(kill-buffer cur-buffer)
-		(find-file directory)
+		(let (
+			  (coding-system-for-read 'utf-8-dos)
+			  )
+		  (find-file directory)
+		  )
 		)
 	  )
 	)
